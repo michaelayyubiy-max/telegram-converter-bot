@@ -22,6 +22,7 @@ from converters import (
     video_to_mp3, video_to_voice, video_to_gif, video_to_round_note,
     compress_video, convert_video_format, mute_video, change_video_speed,
     text_to_pdf, text_to_docx, text_to_speech, text_to_qr,
+    html_to_docx, html_to_pdf, html_to_clean_text,
     json_to_csv, json_to_yaml, yaml_to_json,
     extract_archive, create_zip_archive,
     download_social_media
@@ -351,46 +352,33 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
                         raw_text = f.read()
 
                 is_html_file = (file_name.lower().endswith((".html", ".htm"))) or ("<html" in raw_text[:500].lower())
-                doc_title = base_stem if base_stem != "file" else "Hujjat"
+                doc_title = base_stem if base_stem not in ["file", "fayl", "raw_text", "matn"] else "Hujjat"
 
                 if target == "pdf":
                     target_ext = "pdf"
                     out_path = str(get_temp_path(f"{base_stem}", ".pdf"))
-                    if is_html_file and in_path and os.path.exists(in_path):
-                        def render_html_pdf(h_path, o_path):
-                            import pymupdf
-                            doc = pymupdf.open(h_path)
-                            pdf_bytes = doc.convert_to_pdf()
-                            pdf_doc = pymupdf.open("pdf", pdf_bytes)
-                            pdf_doc.save(o_path)
-                            pdf_doc.close()
-                            doc.close()
-                        await asyncio.to_thread(render_html_pdf, in_path, out_path)
+                    if is_html_file:
+                        await asyncio.to_thread(html_to_pdf, raw_text, out_path, doc_title)
                     else:
                         await asyncio.to_thread(text_to_pdf, raw_text, out_path, doc_title)
                 elif target == "docx":
                     target_ext = "docx"
                     out_path = str(get_temp_path(f"{base_stem}", ".docx"))
                     if is_html_file:
-                        import re
-                        clean_lines = [line.strip() for line in re.sub(r'<[^>]+>', '\n', raw_text).splitlines() if line.strip()]
-                        clean_text = "\n".join(clean_lines)
-                        await asyncio.to_thread(text_to_docx, clean_text, out_path, doc_title)
+                        await asyncio.to_thread(html_to_docx, raw_text, out_path, doc_title)
                     else:
                         await asyncio.to_thread(text_to_docx, raw_text, out_path, doc_title)
                 elif target == "tts":
                     target_ext = "mp3"
                     out_path = str(get_temp_path(f"ovoz_{task_id}", ".mp3"))
-                    clean_for_speech = raw_text
-                    if is_html_file:
-                        import re
-                        clean_for_speech = re.sub(r'<[^>]+>', ' ', raw_text)
-                    await asyncio.to_thread(text_to_speech, clean_for_speech, out_path)
+                    speech_text = html_to_clean_text(raw_text) if is_html_file else raw_text
+                    await asyncio.to_thread(text_to_speech, speech_text, out_path)
                     send_type = "audio"
                 elif target == "qr":
                     target_ext = "png"
                     out_path = str(get_temp_path(f"qr_{task_id}", ".png"))
-                    await asyncio.to_thread(text_to_qr, raw_text[:500], out_path)
+                    qr_text = html_to_clean_text(raw_text)[:500] if is_html_file else raw_text[:500]
+                    await asyncio.to_thread(text_to_qr, qr_text, out_path)
                     send_type = "photo"
                 elif target == "html":
                     target_ext = "html"
@@ -405,15 +393,9 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
                 elif target == "txt":
                     target_ext = "txt"
                     out_path = str(get_temp_path(f"{base_stem}", ".txt"))
-                    if is_html_file:
-                        import re
-                        clean_text = re.sub(r'<[^>]+>', ' ', raw_text)
-                        clean_text = "\n".join([line.strip() for line in clean_text.splitlines() if line.strip()])
-                        with open(out_path, "w", encoding="utf-8") as f:
-                            f.write(clean_text)
-                    else:
-                        with open(out_path, "w", encoding="utf-8") as f:
-                            f.write(raw_text)
+                    clean_text = html_to_clean_text(raw_text) if is_html_file else raw_text
+                    with open(out_path, "w", encoding="utf-8") as f:
+                        f.write(clean_text)
 
         chat_id = callback.message.chat.id
         

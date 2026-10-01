@@ -48,6 +48,15 @@ def run_tests():
         txt_qr = str(tmp / "test_qr.png")
         test("text_to_qr", converters.text_to_qr, sample_text, txt_qr)
 
+        # HTML Converters
+        sample_html = """<!DOCTYPE html><html><head><title>Oshxona</title></head>
+        <body><h1>Menyu</h1><p>Bizning oshxona taomlari:</p>
+        <script id="menu" type="application/json">{"categories": [{"name": "Oshlar", "dishes": [{"name": "Toy Oshi", "price": 40000, "desc": "Maxsus"}]}]}</script>
+        <p>Telefon: +998901234567</p></body></html>"""
+        test("html_to_docx", converters.html_to_docx, sample_html, str(tmp / "sample_html.docx"))
+        test("html_to_pdf", converters.html_to_pdf, sample_html, str(tmp / "sample_html.pdf"))
+        test("html_to_clean_text", converters.html_to_clean_text, sample_html)
+
         # JSON / YAML
         json_file = str(tmp / "data.json")
         with open(json_file, "w") as f:

@@ -19,6 +19,7 @@ from .video_converter import (
 )
 from .text_converter import (
     text_to_pdf, text_to_docx, text_to_speech, text_to_qr,
+    html_to_docx, html_to_pdf, html_to_clean_text,
     json_to_csv, json_to_yaml, yaml_to_json
 )
 from .archive_converter import (
