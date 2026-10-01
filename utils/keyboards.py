@@ -51,10 +51,7 @@ def get_conversion_keyboard(category: str, task_id: str, original_ext: str = "")
                 InlineKeyboardButton(text="📄 Matn (TXT)", callback_data=f"c:{task_id}:txt")
             ],
             [
-                InlineKeyboardButton(text="🔊 Ovoz (Audio/TTS)", callback_data=f"c:{task_id}:tts"),
-                InlineKeyboardButton(text="🌐 HTML sahifa", callback_data=f"c:{task_id}:html")
-            ],
-            [
+                InlineKeyboardButton(text="🌐 HTML sahifa", callback_data=f"c:{task_id}:html"),
                 InlineKeyboardButton(text="🖼 Rasm (PNG ZIP)", callback_data=f"c:{task_id}:images")
             ]
         ]
@@ -214,10 +211,7 @@ def get_conversion_keyboard(category: str, task_id: str, original_ext: str = "")
                 InlineKeyboardButton(text="📝 Word (DOCX)", callback_data=f"c:{task_id}:docx")
             ],
             [
-                InlineKeyboardButton(text="🔊 Ovozga aylantirish (TTS)", callback_data=f"c:{task_id}:tts"),
-                InlineKeyboardButton(text="📱 QR-kod yaratish", callback_data=f"c:{task_id}:qr")
-            ],
-            [
+                InlineKeyboardButton(text="📱 QR-kod yaratish", callback_data=f"c:{task_id}:qr"),
                 InlineKeyboardButton(text="🌐 HTML sahifa", callback_data=f"c:{task_id}:html")
             ]
         ]

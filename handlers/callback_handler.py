@@ -468,13 +468,19 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
             err_msg = "Ushbu fayl formati noto'g'ri yoki fayl shikastlangan."
         elif "Out of memory" in raw_err:
             err_msg = "Fayl hajmi juda katta bo'lgani sababli aylantirib bo'lmadi."
+        elif "Sign in to confirm you" in raw_err or ("bot" in raw_err.lower() and "youtube" in raw_err.lower()) or "unavailable" in raw_err.lower() or "private video" in raw_err.lower():
+            err_msg = "Ushbu video YouTube tomonidan cheklangan, yopiq (private) yoki o'chirib tashlangan. Iltimos, boshqa ommaviy havola yuborib ko'ring."
+        elif "login" in raw_err.lower() and "instagram" in raw_err.lower():
+            err_msg = "Ushbu Instagram posti yopiq profilga (private) tegishli bo'lgani sababli yuklab bo'lmadi."
+        elif "cheklangan" in raw_err or "yopiq" in raw_err:
+            err_msg = raw_err
         else:
             import re
             clean_err = re.sub(r'/[^\s\'"]+', '...', raw_err)[:150]
             err_msg = html.escape(clean_err)
             
         await progress_msg.edit_text(
-            f"❌ <b>Xatolik:</b> {err_msg}\n\nIltimos, fayl butunligini tekshiring yoki boshqa formatni tanlab ko'ring.",
+            f"❌ <b>Xatolik:</b> {err_msg}",
             parse_mode=ParseMode.HTML
         )
     finally:

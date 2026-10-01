@@ -65,6 +65,9 @@ HELP_TEXT = """
 • Bot tezkorlik bilan aylantirib, sizga tayyor faylni qaytarib beradi.
 
 📌 <b>Fayl hajmi cheklovi:</b> Telegram orqali 50 MB gacha bo'lgan natijaviy fayllar yuboriladi. Katta videolar avtomatik siqib moslashtiriladi.
+
+👨‍💻 <b>Admin / Qo'llab-quvvatlash:</b> <a href="https://t.me/Vibecdruz">@Vibecdruz</a>
+Savol, taklif va yordam uchun adminga murojaat qilishingiz mumkin.
 """
 
 FORMATS_TEXT = """
@@ -109,6 +112,8 @@ ABOUT_TEXT = """
 🤖 <b>Universal File & Media Converter Bot</b>
 Versiya: 3.0 Ultimate
 Tezkor, xavfsiz va barcha turdagi fayllarni hamda ijtimoiy tarmoq videolarini o'zaro sifatli aylantirish tizimi.
+
+👨‍💻 <b>Admin / Bog'lanish:</b> <a href="https://t.me/Vibecdruz">@Vibecdruz</a>
 
 ⚡ Bot Python, FFmpeg, yt-dlp, PyMuPDF, OpenCV, RapidOCR va ReportLab texnologiyalari asosida ishlaydi.
 """
