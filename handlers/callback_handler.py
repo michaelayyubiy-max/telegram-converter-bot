@@ -437,9 +437,18 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
         )
     except Exception as e:
         traceback.print_exc()
-        err_msg = html.escape(str(e)[:250])
+        raw_err = str(e)
+        if "Failed to open file" in raw_err or "no objects found" in raw_err or "not a valid" in raw_err.lower() or "shikastlangan" in raw_err:
+            err_msg = "Ushbu fayl formati noto'g'ri yoki fayl shikastlangan."
+        elif "Out of memory" in raw_err:
+            err_msg = "Fayl hajmi juda katta bo'lgani sababli aylantirib bo'lmadi."
+        else:
+            import re
+            clean_err = re.sub(r'/[^\s\'"]+', '...', raw_err)[:150]
+            err_msg = html.escape(clean_err)
+            
         await progress_msg.edit_text(
-            f"❌ <b>Xatolik yuz berdi:</b>\n<code>{err_msg}</code>\n\nIltimos boshqa formatni tanlab ko'ring yoki havolani tekshiring.",
+            f"❌ <b>Xatolik:</b> {err_msg}\n\nIltimos, fayl butunligini tekshiring yoki boshqa formatni tanlab ko'ring.",
             parse_mode=ParseMode.HTML
         )
     finally:

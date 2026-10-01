@@ -66,16 +66,31 @@ def get_base_styles():
 # ----------------- PDF CONVERSIONS -----------------
 
 def pdf_to_docx(input_path: str, output_path: str) -> str:
-    """Converts PDF to DOCX with high speed and memory safety for both small and large documents"""
+    """Converts PDF to DOCX with high speed and memory safety, with image recovery if not standard PDF"""
     import gc
     success = False
+    pdf_doc = None
     
     try:
         pdf_doc = pymupdf.open(input_path)
         page_count = len(pdf_doc)
     except Exception as e:
-        print(f"Error opening PDF: {e}")
-        return output_path
+        print(f"PyMuPDF open error: {e}. Checking if file is an image disguised as PDF...")
+        try:
+            from PIL import Image
+            img = Image.open(input_path)
+            w_doc = docx.Document()
+            t_img = f"/tmp/p_{uuid.uuid4().hex[:8]}.jpg"
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            img.save(t_img, "JPEG")
+            w_doc.add_picture(t_img, width=Inches(6.2))
+            w_doc.save(output_path)
+            if os.path.exists(t_img):
+                os.remove(t_img)
+            return output_path
+        except Exception:
+            raise ValueError("Ushbu fayl haqiqiy PDF formati emas yoki fayl shikastlangan.")
 
     # Check if PDF contains extractable text
     total_text_len = 0
@@ -105,13 +120,11 @@ def pdf_to_docx(input_path: str, output_path: str) -> str:
             for page_idx in range(page_count):
                 page = pdf_doc[page_idx]
                 blocks = page.get_text("blocks")
-                # Sort blocks top-to-bottom
                 blocks.sort(key=lambda b: (b[1], b[0]))
                 
                 for b in blocks:
                     if len(b) > 4 and b[4].strip():
                         txt = b[4].strip()
-                        # Detect headings (short single line, title-case or uppercase)
                         if len(txt) < 80 and "\n" not in txt and (txt.isupper() or txt.istitle()):
                             w_doc.add_heading(txt, level=2)
                         else:
@@ -131,12 +144,12 @@ def pdf_to_docx(input_path: str, output_path: str) -> str:
         print("Using downscaled image-based DOCX fallback for scanned PDF...")
         try:
             w_doc = docx.Document()
-            max_scanned_pages = min(page_count, 35) # Cap to avoid OOM
+            max_scanned_pages = min(page_count, 35)
             temp_imgs = []
             
             for i in range(max_scanned_pages):
                 page = pdf_doc[i]
-                pix = page.get_pixmap(dpi=96) # 96 DPI is clear and memory-efficient
+                pix = page.get_pixmap(dpi=96)
                 t_img = f"/tmp/p_{uuid.uuid4().hex[:8]}_{i}.jpg"
                 pix.save(t_img)
                 temp_imgs.append(t_img)
@@ -161,54 +174,84 @@ def pdf_to_docx(input_path: str, output_path: str) -> str:
         except Exception as e:
             print(f"Scanned fallback error: {e}")
 
-    pdf_doc.close()
+    if pdf_doc:
+        pdf_doc.close()
     gc.collect()
     return output_path
 
 def pdf_to_txt(input_path: str, output_path: str) -> str:
-    """Extracts text from PDF quickly. If scanned (no text), falls back to RapidOCR up to 10 pages."""
-    doc = pymupdf.open(input_path)
-    full_text = []
-    for page_num, page in enumerate(doc, 1):
-        text = page.get_text()
-        if text.strip():
-            full_text.append(f"--- [Sahifa {page_num}] ---\n" + text.strip())
-    
-    # If no text found, try OCR on first 10 pages
-    if not full_text:
+    """Extracts text from PDF quickly. If scanned or disguised image, falls back to RapidOCR."""
+    doc = None
+    try:
+        doc = pymupdf.open(input_path)
+        full_text = []
+        for page_num, page in enumerate(doc, 1):
+            text = page.get_text()
+            if text.strip():
+                full_text.append(f"--- [Sahifa {page_num}] ---\n" + text.strip())
+        
+        if not full_text:
+            try:
+                from rapidocr_onnxruntime import RapidOCR
+                import numpy as np
+                ocr = RapidOCR()
+                max_ocr_pages = min(len(doc), 10)
+                for page_num in range(1, max_ocr_pages + 1):
+                    page = doc[page_num - 1]
+                    pix = page.get_pixmap(dpi=120)
+                    img_data = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.h, pix.w, pix.n))
+                    if pix.n == 4:
+                        img_data = img_data[:, :, :3]
+                    result, _ = ocr(img_data)
+                    if result:
+                        lines = [item[1] for item in result if len(item) > 1 and item[1].strip()]
+                        if lines:
+                            full_text.append(f"--- [Sahifa {page_num} (OCR)] ---\n" + "\n".join(lines))
+            except Exception as ocr_err:
+                print(f"PDF OCR fallback error: {ocr_err}")
+                
+        doc.close()
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n\n".join(full_text) if full_text else "Faylda matn topilmadi.")
+        return output_path
+    except Exception as e:
+        # Check if it's an image
         try:
+            from PIL import Image
             from rapidocr_onnxruntime import RapidOCR
             import numpy as np
+            img = Image.open(input_path)
             ocr = RapidOCR()
-            max_ocr_pages = min(len(doc), 10)
-            for page_num in range(1, max_ocr_pages + 1):
-                page = doc[page_num - 1]
-                pix = page.get_pixmap(dpi=120)
-                img_data = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.h, pix.w, pix.n))
-                if pix.n == 4:
-                    img_data = img_data[:, :, :3]
-                result, _ = ocr(img_data)
-                if result:
-                    lines = [item[1] for item in result if len(item) > 1 and item[1].strip()]
-                    if lines:
-                        full_text.append(f"--- [Sahifa {page_num} (OCR)] ---\n" + "\n".join(lines))
-        except Exception as ocr_err:
-            print(f"PDF OCR fallback error: {ocr_err}")
-            
-    doc.close()
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n\n".join(full_text) if full_text else "Faylda matn topilmadi.")
-    return output_path
+            result, _ = ocr(np.array(img.convert("RGB")))
+            lines = [item[1] for item in result] if result else ["Rasmda matn topilmadi."]
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+            return output_path
+        except Exception:
+            raise ValueError("Ushbu fayl haqiqiy PDF formati emas yoki fayl shikastlangan.")
 
 def pdf_to_images(input_path: str, output_dir: str, fmt: str = "png") -> str:
-    """Converts PDF pages to PNG/JPG. If > 1 page, packages into ZIP archive."""
+    """Converts PDF pages to PNG/JPG. If image disguised as PDF, extracts directly."""
     import gc
-    doc = pymupdf.open(input_path)
-    img_paths = []
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
     
+    try:
+        doc = pymupdf.open(input_path)
+    except Exception as e:
+        print(f"PyMuPDF open error: {e}. Attempting direct image recovery...")
+        try:
+            from PIL import Image
+            img = Image.open(input_path)
+            out_img = output_dir_path / f"image_1.{fmt}"
+            if fmt.lower() in ["jpg", "jpeg"] and img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            img.save(str(out_img))
+            return str(out_img)
+        except Exception:
+            raise ValueError("Ushbu fayl haqiqiy PDF formati emas yoki fayl shikastlangan.")
+
+    img_paths = []
     page_count = len(doc)
     max_pages = min(page_count, 40)
     zoom = 1.5 if page_count > 10 else 2.0
@@ -217,7 +260,7 @@ def pdf_to_images(input_path: str, output_dir: str, fmt: str = "png") -> str:
     for i in range(max_pages):
         page = doc[i]
         pix = page.get_pixmap(matrix=mat)
-        out_img = output_dir_path / f"page_{i + 1:03d}.jpg"
+        out_img = output_dir_path / f"page_{i + 1:03d}.{fmt}"
         pix.save(str(out_img))
         img_paths.append(str(out_img))
         if (i + 1) % 10 == 0:
@@ -236,30 +279,55 @@ def pdf_to_images(input_path: str, output_dir: str, fmt: str = "png") -> str:
     return str(zip_path)
 
 def pdf_to_html(input_path: str, output_path: str) -> str:
-    """Converts PDF pages to readable HTML structure"""
-    doc = pymupdf.open(input_path)
-    html_parts = [
-        "<!DOCTYPE html><html><head><meta charset='utf-8'><title>PDF Hujjati</title>",
-        "<style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;padding:1rem;line-height:1.6;color:#333;}",
-        ".page{border-bottom:2px dashed #ccc;padding:1.5rem 0;margin-bottom:1rem;}",
-        ".page-num{font-weight:bold;color:#2563eb;margin-bottom:0.5rem;}</style></head><body>"
-    ]
-    for i, page in enumerate(doc, 1):
-        text = page.get_text("html")
-        html_parts.append(f"<div class='page'><div class='page-num'>Sahifa {i}</div>{text}</div>")
-    html_parts.append("</body></html>")
-    doc.close()
-    
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(html_parts))
-    return output_path
+    """Converts PDF pages to readable HTML structure, supports image-based PDFs"""
+    try:
+        doc = pymupdf.open(input_path)
+        html_parts = [
+            "<!DOCTYPE html><html><head><meta charset='utf-8'><title>PDF Hujjati</title>",
+            "<style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;padding:1rem;line-height:1.6;color:#333;}",
+            ".page{border-bottom:2px dashed #ccc;padding:1.5rem 0;margin-bottom:1rem;}",
+            ".page-num{font-weight:bold;color:#2563eb;margin-bottom:0.5rem;}</style></head><body>"
+        ]
+        for i, page in enumerate(doc, 1):
+            text = page.get_text("html")
+            html_parts.append(f"<div class='page'><div class='page-num'>Sahifa {i}</div>{text}</div>")
+        html_parts.append("</body></html>")
+        doc.close()
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(html_parts))
+        return output_path
+    except Exception:
+        try:
+            import base64
+            from PIL import Image
+            img = Image.open(input_path)
+            with open(input_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            content = f"<!DOCTYPE html><html><body style='text-align:center;padding:2rem;'><img src='data:image/jpeg;base64,{b64}' style='max-width:100%;border-radius:8px;'/></body></html>"
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return output_path
+        except Exception:
+            raise ValueError("Ushbu fayl haqiqiy PDF formati emas yoki fayl shikastlangan.")
 
 def pdf_compress(input_path: str, output_path: str) -> str:
-    """Compresses PDF document"""
-    doc = pymupdf.open(input_path)
-    doc.save(output_path, garbage=4, deflate=True, clean=True)
-    doc.close()
-    return output_path
+    """Compresses PDF document or image-based PDF"""
+    try:
+        doc = pymupdf.open(input_path)
+        doc.save(output_path, garbage=4, deflate=True, clean=True)
+        doc.close()
+        return output_path
+    except Exception:
+        try:
+            from PIL import Image
+            img = Image.open(input_path)
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            img.save(output_path, "JPEG", quality=65)
+            return output_path
+        except Exception:
+            raise ValueError("Ushbu fayl haqiqiy PDF formati emas yoki fayl shikastlangan.")
 
 # ----------------- DOCX CONVERSIONS -----------------
 

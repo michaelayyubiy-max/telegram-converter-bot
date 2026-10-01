@@ -12,7 +12,7 @@ except Exception as e:
     print(f"pillow_heif warning: {e}")
 
 def load_image(input_path: str) -> Image.Image:
-    """Loads image, adding native SVG rendering support via PyMuPDF"""
+    """Loads image, adding native SVG and PDF page rendering support"""
     ext = Path(input_path).suffix.lower()
     if ext == ".svg":
         import pymupdf
@@ -23,7 +23,19 @@ def load_image(input_path: str) -> Image.Image:
         im = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         doc.close()
         return im
-    return Image.open(input_path)
+        
+    try:
+        return Image.open(input_path)
+    except Exception:
+        try:
+            import pymupdf
+            doc = pymupdf.open(input_path)
+            pix = doc[0].get_pixmap(dpi=150)
+            im = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            doc.close()
+            return im
+        except Exception:
+            raise ValueError("Ushbu rasm formati qo'llab-quvvatlanmaydi yoki fayl buzilgan.")
 
 def convert_image_format(input_path: str, output_path: str, target_format: str, quality: int = 90) -> str:
     """Converts image to target format (JPG, PNG, WEBP, BMP, ICO, TIFF, PDF)"""
