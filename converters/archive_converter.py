@@ -5,24 +5,28 @@ from pathlib import Path
 from typing import List, Tuple
 
 def extract_archive(archive_path: str, extract_dir: str) -> Tuple[List[str], str]:
-    """Extracts ZIP or TAR archive, returns list of extracted file paths and summary info"""
-    ext_path = Path(extract_dir)
+    """Extracts ZIP or TAR archive safely, returns list of extracted file paths and summary info"""
+    ext_path = Path(extract_dir).resolve()
     ext_path.mkdir(parents=True, exist_ok=True)
     
     extracted_files = []
     
     if zipfile.is_zipfile(archive_path):
         with zipfile.ZipFile(archive_path, 'r') as zf:
-            zf.extractall(extract_dir)
             for member in zf.infolist():
-                if not member.is_dir():
-                    extracted_files.append(str(ext_path / member.filename))
+                target_path = (ext_path / member.filename).resolve()
+                if ext_path in target_path.parents or target_path == ext_path:
+                    if not member.is_dir():
+                        zf.extract(member, extract_dir)
+                        extracted_files.append(str(target_path))
     elif tarfile.is_tarfile(archive_path):
         with tarfile.open(archive_path, 'r:*') as tf:
-            tf.extractall(extract_dir)
             for member in tf.getmembers():
-                if member.isfile():
-                    extracted_files.append(str(ext_path / member.name))
+                target_path = (ext_path / member.name).resolve()
+                if ext_path in target_path.parents or target_path == ext_path:
+                    if member.isfile():
+                        tf.extract(member, extract_dir)
+                        extracted_files.append(str(target_path))
     else:
         raise ValueError("Noma'lum yoki qo'llab-quvvatlanmaydigan arxiv formati")
         
