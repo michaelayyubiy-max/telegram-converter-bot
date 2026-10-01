@@ -428,6 +428,13 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
         else:
             await progress_msg.edit_text("❌ <b>Aylantirishda xatolik yuz berdi.</b> Iltimos qaytadan urinib ko'ring.", parse_mode=ParseMode.HTML)
 
+    except asyncio.TimeoutError:
+        await progress_msg.edit_text(
+            "⚠️ <b>Aylantirish vaqti tugadi!</b>\n\n"
+            "Fayl juda katta (sahifalari ko'p) bo'lgani sababli jarayon to'xtatildi.\n"
+            "Iltimos, faylning kichikroq hajmini yuboring.",
+            parse_mode=ParseMode.HTML
+        )
     except Exception as e:
         traceback.print_exc()
         err_msg = html.escape(str(e)[:250])
@@ -438,3 +445,5 @@ async def cb_convert(callback: CallbackQuery, bot: Bot):
     finally:
         safe_remove(*clean_paths)
         task_store.remove_task(task_id)
+        import gc
+        gc.collect()

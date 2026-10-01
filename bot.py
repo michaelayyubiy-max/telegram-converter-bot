@@ -76,7 +76,15 @@ async def main():
     logger.info(f"Bot muvaffaqiyatli ishga tushdi: @{bot_info.username} ({bot_info.first_name})")
 
     try:
-        await dp.start_polling(bot)
+        while True:
+            try:
+                await dp.start_polling(bot)
+                break
+            except (KeyboardInterrupt, SystemExit):
+                break
+            except Exception as poll_err:
+                logger.error(f"Polling xatoligi: {poll_err}. 5 soniyadan keyin qayta ulanadi...")
+                await asyncio.sleep(5)
     finally:
         await health_runner.cleanup()
         await bot.session.close()

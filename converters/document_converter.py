@@ -66,47 +66,107 @@ def get_base_styles():
 # ----------------- PDF CONVERSIONS -----------------
 
 def pdf_to_docx(input_path: str, output_path: str) -> str:
-    """Converts PDF to DOCX using pdf2docx with scanned-fallback"""
+    """Converts PDF to DOCX with high speed and memory safety for both small and large documents"""
+    import gc
     success = False
+    
     try:
-        from pdf2docx import Converter
-        cv = Converter(input_path)
-        cv.convert(output_path, start=0, end=None)
-        cv.close()
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            success = True
-    except Exception as e:
-        print(f"pdf2docx primary engine error: {e}")
-
-    if not success:
-        # Fallback: extract pages as high-resolution images and embed into DOCX
-        print("Using image-based DOCX fallback for scanned or complex PDF...")
-        doc = docx.Document()
         pdf_doc = pymupdf.open(input_path)
-        temp_imgs = []
+        page_count = len(pdf_doc)
+    except Exception as e:
+        print(f"Error opening PDF: {e}")
+        return output_path
+
+    # Check if PDF contains extractable text
+    total_text_len = 0
+    sample_pages = min(page_count, 10)
+    for p in range(sample_pages):
+        total_text_len += len(pdf_doc[p].get_text().strip())
+    has_text = total_text_len > 30
+
+    # 1. For small documents with text (<= 15 pages), try pdf2docx for exact layout
+    if has_text and page_count <= 15:
         try:
-            for i, page in enumerate(pdf_doc):
-                pix = page.get_pixmap(dpi=150)
-                t_img = f"/tmp/p_{uuid.uuid4().hex[:8]}_{i}.png"
+            from pdf2docx import Converter
+            cv = Converter(input_path)
+            cv.convert(output_path, start=0, end=None)
+            cv.close()
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+                success = True
+        except Exception as e:
+            print(f"pdf2docx primary engine error: {e}")
+
+    # 2. For multi-page books (>15 pages) or if pdf2docx failed: fast PyMuPDF text & block extraction
+    if not success and has_text:
+        try:
+            print(f"Using fast PyMuPDF block extraction for {page_count}-page PDF...")
+            w_doc = docx.Document()
+            
+            for page_idx in range(page_count):
+                page = pdf_doc[page_idx]
+                blocks = page.get_text("blocks")
+                # Sort blocks top-to-bottom
+                blocks.sort(key=lambda b: (b[1], b[0]))
+                
+                for b in blocks:
+                    if len(b) > 4 and b[4].strip():
+                        txt = b[4].strip()
+                        # Detect headings (short single line, title-case or uppercase)
+                        if len(txt) < 80 and "\n" not in txt and (txt.isupper() or txt.istitle()):
+                            w_doc.add_heading(txt, level=2)
+                        else:
+                            w_doc.add_paragraph(txt)
+                            
+                if page_idx < page_count - 1:
+                    w_doc.add_page_break()
+                    
+            w_doc.save(output_path)
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 500:
+                success = True
+        except Exception as e:
+            print(f"PyMuPDF block extraction error: {e}")
+
+    # 3. Fallback for scanned PDFs (no text at all): embed downscaled page images
+    if not success:
+        print("Using downscaled image-based DOCX fallback for scanned PDF...")
+        try:
+            w_doc = docx.Document()
+            max_scanned_pages = min(page_count, 35) # Cap to avoid OOM
+            temp_imgs = []
+            
+            for i in range(max_scanned_pages):
+                page = pdf_doc[i]
+                pix = page.get_pixmap(dpi=96) # 96 DPI is clear and memory-efficient
+                t_img = f"/tmp/p_{uuid.uuid4().hex[:8]}_{i}.jpg"
                 pix.save(t_img)
                 temp_imgs.append(t_img)
                 if i > 0:
-                    doc.add_page_break()
-                doc.add_picture(t_img, width=Inches(6.2))
-            doc.save(output_path)
-        finally:
-            pdf_doc.close()
+                    w_doc.add_page_break()
+                w_doc.add_picture(t_img, width=Inches(6.2))
+                
+                if (i + 1) % 5 == 0:
+                    gc.collect()
+                    
+            if page_count > max_scanned_pages:
+                w_doc.add_paragraph(f"\n[Eslatma: PDF {page_count} sahifali scanned hujjat bo'lgani sababli dastlabki {max_scanned_pages} sahifasi kiritildi]")
+                
+            w_doc.save(output_path)
             for ti in temp_imgs:
                 if os.path.exists(ti):
                     try:
                         os.remove(ti)
                     except Exception:
                         pass
-                        
+            success = True
+        except Exception as e:
+            print(f"Scanned fallback error: {e}")
+
+    pdf_doc.close()
+    gc.collect()
     return output_path
 
 def pdf_to_txt(input_path: str, output_path: str) -> str:
-    """Extracts text from PDF. If scanned (no text), falls back to RapidOCR."""
+    """Extracts text from PDF quickly. If scanned (no text), falls back to RapidOCR up to 10 pages."""
     doc = pymupdf.open(input_path)
     full_text = []
     for page_num, page in enumerate(doc, 1):
@@ -114,15 +174,16 @@ def pdf_to_txt(input_path: str, output_path: str) -> str:
         if text.strip():
             full_text.append(f"--- [Sahifa {page_num}] ---\n" + text.strip())
     
-    # If no text found, try OCR on pages
+    # If no text found, try OCR on first 10 pages
     if not full_text:
         try:
             from rapidocr_onnxruntime import RapidOCR
             import numpy as np
             ocr = RapidOCR()
-            for page_num, page in enumerate(doc, 1):
-                pix = page.get_pixmap(dpi=150)
-                # convert pixmap to numpy array
+            max_ocr_pages = min(len(doc), 10)
+            for page_num in range(1, max_ocr_pages + 1):
+                page = doc[page_num - 1]
+                pix = page.get_pixmap(dpi=120)
                 img_data = np.frombuffer(pix.samples, dtype=np.uint8).reshape((pix.h, pix.w, pix.n))
                 if pix.n == 4:
                     img_data = img_data[:, :, :3]
@@ -142,20 +203,28 @@ def pdf_to_txt(input_path: str, output_path: str) -> str:
 
 def pdf_to_images(input_path: str, output_dir: str, fmt: str = "png") -> str:
     """Converts PDF pages to PNG/JPG. If > 1 page, packages into ZIP archive."""
+    import gc
     doc = pymupdf.open(input_path)
     img_paths = []
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
     
-    zoom = 2.0 # 144 DPI
+    page_count = len(doc)
+    max_pages = min(page_count, 40)
+    zoom = 1.5 if page_count > 10 else 2.0
     mat = pymupdf.Matrix(zoom, zoom)
     
-    for i, page in enumerate(doc):
+    for i in range(max_pages):
+        page = doc[i]
         pix = page.get_pixmap(matrix=mat)
-        out_img = output_dir_path / f"page_{i + 1:03d}.{fmt}"
+        out_img = output_dir_path / f"page_{i + 1:03d}.jpg"
         pix.save(str(out_img))
         img_paths.append(str(out_img))
+        if (i + 1) % 10 == 0:
+            gc.collect()
+            
     doc.close()
+    gc.collect()
 
     if len(img_paths) == 1:
         return img_paths[0]
