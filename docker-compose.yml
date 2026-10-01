@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  telegram-converter-bot:
+    build: .
+    container_name: converter_bot
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./temp:/app/temp

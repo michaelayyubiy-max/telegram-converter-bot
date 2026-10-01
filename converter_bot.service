@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram Universal Converter Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/telegram-converter-bot
+ExecStart=/usr/bin/python3 bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
