@@ -115,6 +115,11 @@ def _get_youtube_metadata(url: str) -> dict | None:
     try:
         import json
         clean_url = url.split("&")[0].split("?si=")[0]
+        # Normalize /shorts/ to /watch?v= so oEmbed succeeds instantly
+        m_short = re.search(r'/shorts/([A-Za-z0-9_-]+)', clean_url)
+        if m_short:
+            clean_url = f"https://www.youtube.com/watch?v={m_short.group(1)}"
+            
         oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(clean_url)}&format=json"
         req = urllib.request.Request(oembed_url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req, timeout=4) as resp:
@@ -179,8 +184,9 @@ def get_url_metadata(url: str) -> dict:
         'skip_download': True,
         'extract_flat': False,
         'noplaylist': True,
+        'socket_timeout': 5,
         'extractor_args': {
-            'youtube': {'player_client': ['android', 'web', 'ios']},
+            'youtube': {'player_client': ['android', 'ios']},
         },
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
@@ -279,10 +285,11 @@ def _download_instagram_curl_cffi(url: str, target: str, out_dir_path: Path) -> 
 def _download_youtube_fast(url: str, target: str, out_dir_path: Path) -> tuple[str, str, str] | None:
     """Fast YouTube downloader via streaming proxy bypassing bot detection"""
     import requests, time
+    out_dir_path = Path(out_dir_path)
     fmt = "mp3" if target == "mp3" else "720"
     api_url = f"https://loader.to/ajax/download.php?button=1&start=1&end=1&format={fmt}&url={urllib.parse.quote(url)}"
     try:
-        r = requests.get(api_url, timeout=6)
+        r = requests.get(api_url, timeout=5)
         if r.status_code != 200:
             return None
         data = r.json()
@@ -292,12 +299,12 @@ def _download_youtube_fast(url: str, target: str, out_dir_path: Path) -> tuple[s
         title = data.get("title") or "youtube_video"
         title = re.sub(r'[\\/*?:"<>|]', "", title).strip() or "video"
         
-        prog_url = data.get("progress_url") or f"https://p.oceansaver.in/ajax/progress.php?id={data.get('id')}"
+        prog_url = data.get("progress_url") or f"https://lto2.affadaffa.com/api/progress?id={data.get('id')}"
         
         download_url = None
-        for _ in range(12):
+        for _ in range(4):
             time.sleep(1)
-            pr = requests.get(prog_url, timeout=6)
+            pr = requests.get(prog_url, timeout=5)
             if pr.status_code == 200:
                 pdata = pr.json()
                 if pdata.get("download_url"):
@@ -372,15 +379,6 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
         except Exception as e:
             print(f"TikWM error: {e}")
 
-    # 4. YouTube fast streaming bypass
-    if platform == "YouTube":
-        try:
-            yt_res = _download_youtube_fast(url, target, out_dir_path)
-            if yt_res:
-                return yt_res
-        except Exception as e:
-            print(f"Fast YouTube loader error: {e}")
-
     # 4. Universal yt-dlp download
     base_template = str(out_dir_path / "%(id)s.%(ext)s")
     
@@ -391,7 +389,7 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
         'outtmpl': base_template,
         'ffmpeg_location': FFMPEG_PATH,
         'extractor_args': {
-            'youtube': {'player_client': ['android', 'web', 'ios']},
+            'youtube': {'player_client': ['android', 'ios']},
         },
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -399,7 +397,7 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
     }
 
     if target == "mp3":
-        ydl_opts['format'] = 'bestaudio/best'
+        ydl_opts['format'] = 'ba/b'
         ydl_opts['postprocessors'] = [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -409,8 +407,8 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
         ydl_opts['skip_download'] = True
         ydl_opts['writethumbnail'] = True
     else:
-        # Best video compatible with mp4
-        ydl_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+        # Prioritize single file under 48M or 480p/360p, or best video+audio merged to mp4
+        ydl_opts['format'] = 'b[filesize<48M]/b[filesize_approx<48M]/b[height<=480]/b[height<=360]/18/bestvideo+bestaudio/best'
         ydl_opts['merge_output_format'] = 'mp4'
 
     title = f"{platform}_media"
@@ -420,8 +418,15 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
             if info:
                 title = info.get("title") or title
     except Exception as e:
+        if platform == "YouTube":
+            try:
+                yt_res = _download_youtube_fast(url, target, out_dir_path)
+                if yt_res:
+                    return yt_res
+            except Exception:
+                pass
         err_str = str(e)
-        if "Sign in to confirm you" in err_str or ("bot" in err_str.lower() and "youtube" in err_str.lower()) or "unavailable" in err_str.lower() or "private video" in err_str.lower():
+        if "private video" in err_str.lower() or "this video has been removed" in err_str.lower() or "video unavailable" in err_str.lower():
             raise RuntimeError("Ushbu video YouTube tomonidan cheklangan, yopiq (private) yoki o'chirib tashlangan.")
         raise
 
@@ -448,9 +453,15 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
     # 5. Post-process according to target
     if target == "mp3":
         if primary_file.suffix.lower() == ".mp3":
-            return input_file_str, "audio", f"{title}.mp3"
-        out_mp3 = str(out_dir_path / f"{title}.mp3")
-        video_to_mp3(input_file_str, out_mp3)
+            out_mp3 = input_file_str
+        else:
+            out_mp3 = str(out_dir_path / f"{title}.mp3")
+            video_to_mp3(input_file_str, out_mp3)
+        if os.path.exists(out_mp3) and os.path.getsize(out_mp3) > (48 * 1024 * 1024):
+            compressed_mp3 = str(out_dir_path / f"{title}_compressed.mp3")
+            video_to_mp3(input_file_str, compressed_mp3, bitrate="64k")
+            if os.path.exists(compressed_mp3):
+                out_mp3 = compressed_mp3
         return out_mp3, "audio", f"{title}.mp3"
 
     elif target == "voice":
@@ -498,8 +509,8 @@ def download_social_media(url: str, target: str, out_dir: str) -> tuple[str, str
         if file_size > (48 * 1024 * 1024):
             print(f"Video size {file_size} exceeds Telegram limit, compressing...")
             compressed_mp4 = str(out_dir_path / f"{title}_compressed.mp4")
-            compress_video(out_mp4, compressed_mp4, crf=30)
-            if os.path.exists(compressed_mp4):
+            compress_video(out_mp4, compressed_mp4, target_mb=44.0)
+            if os.path.exists(compressed_mp4) and os.path.getsize(compressed_mp4) > 0:
                 out_mp4 = compressed_mp4
 
         return out_mp4, "video", f"{title}.mp4"

@@ -77,18 +77,58 @@ def video_to_round_note(input_path: str, output_path: str) -> str:
         raise RuntimeError(f"Video Note conversion failed: {res.stderr}")
     return output_path
 
-def compress_video(input_path: str, output_path: str, crf: int = 28) -> str:
-    """Compresses video for easier sharing on Telegram"""
-    cmd = [
-        FFMPEG_PATH, "-y", "-i", input_path,
-        "-c:v", "libx264",
-        "-preset", "medium",
-        "-crf", str(crf),
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "96k",
-        output_path
-    ]
+def get_video_duration(input_path: str) -> float:
+    """Gets duration of video file in seconds using ffprobe"""
+    import json
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "json",
+            input_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        data = json.loads(res.stdout)
+        return float(data.get("format", {}).get("duration", 0))
+    except Exception:
+        return 0.0
+
+def compress_video(input_path: str, output_path: str, crf: int = 28, target_mb: float = 44.0) -> str:
+    """
+    Compresses video for easier sharing on Telegram (must be <= 50MB limit).
+    If duration is known, calculates exact bitrate to guarantee size under target_mb with fast preset.
+    """
+    duration = get_video_duration(input_path)
+    if duration > 0:
+        target_bits = target_mb * 8 * 1024 * 1024
+        total_kbps = int((target_bits / duration) / 1000)
+        audio_kbps = 48 if total_kbps < 350 else 64
+        video_kbps = max(80, total_kbps - audio_kbps)
+        cmd = [
+            FFMPEG_PATH, "-y", "-i", input_path,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-b:v", f"{video_kbps}k",
+            "-maxrate", f"{int(video_kbps * 1.3)}k",
+            "-bufsize", f"{int(video_kbps * 2)}k",
+            "-vf", "scale=min(640\,iw):-2",
+            "-c:a", "aac",
+            "-b:a", f"{audio_kbps}k",
+            "-pix_fmt", "yuv420p",
+            output_path
+        ]
+    else:
+        cmd = [
+            FFMPEG_PATH, "-y", "-i", input_path,
+            "-c:v", "libx264",
+            "-preset", "veryfast",
+            "-crf", str(crf),
+            "-vf", "scale=min(640\,iw):-2",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "64k",
+            output_path
+        ]
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode != 0:
         raise RuntimeError(f"Video compression failed: {res.stderr}")

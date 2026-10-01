@@ -17,7 +17,7 @@ START_TEXT = """
 
 📄 <b>Hujjatlar:</b>
 • PDF ➔ Word (DOCX), Excel (XLSX), Rasmlar (PNG/JPG ZIP), Matn (TXT), HTML, Siqish
-• Word (DOCX) ➔ PDF, Ovoz (Audio/TTS), Matn (TXT), HTML, Rasmlar
+• Word (DOCX) ➔ PDF, Matn (TXT), HTML, Rasmlar
 • Excel (XLSX, CSV) ➔ PDF, CSV, JSON, HTML
 • PowerPoint (PPTX) ➔ PDF, Slaydlar rasmi (ZIP), Matn (TXT)
 
@@ -46,7 +46,7 @@ START_TEXT = """
 📦 <b>Arxivlar va Ma'lumotlar:</b>
 • ZIP / TAR arxivlarni ochish
 • JSON ➔ CSV, YAML
-• Matn ➔ PDF, DOCX, Ovoz (Audio/TTS), QR-kod, HTML
+• Matn ➔ PDF, DOCX, QR-kod, HTML
 
 👇 <b>Boshlash uchun istalgan fayl, rasm, video, ovoz, matn yoki havola yuboring!</b>
 """
