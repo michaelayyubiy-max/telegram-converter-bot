@@ -6,7 +6,7 @@ BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
 # Telegram Bot Token
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8730084666:AAECqvQ2P4zioyvp3tnbZz0NwTwxFQfQ938")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
 # Directories
 TEMP_DIR = BASE_DIR / "temp"
