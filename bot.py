@@ -52,7 +52,7 @@ async def main():
 
     logger.info("Universal Converter Bot ishga tushmoqda...")
     
-    # Start health-check server for Render.com / Cloud deployment
+    # Start health-check server for cloud/container deployment
     health_runner = await start_health_server()
 
     bot = Bot(
